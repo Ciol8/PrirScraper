@@ -2,14 +2,47 @@
 <html>
 
 <head>
-    <title>Simple 3-container app</title>
+    <title>Books Project</title>
 </head>
 
+
 <body>
-    <h1>Data from MongoDB:</h1>
+    <h1>Books Project - Fantasy Books</h1>
+
+    <form action="/scrape_category" method="post">
+        <label for="category">Wybierz kategorię:</label>
+        <select name="category" id="category">
+            {% for cat in categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Pobierz książki</button>
+        <input type="number" name="num_books" min="1" value="3">
+    </form>
+
+    <h2>Filtruj książki według kategorii:</h2>
+    <form method="get" action="/">
+        <select name="category">
+            <option value="">-- Wszystkie --</option>
+            {% for cat in categories %}
+            <option value="{{ cat }}" {% if cat==selected_category %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Filtruj</button>
+    </form>
+
+    <h2>Dane z bazy:</h2>
     <ul>
         {% for item in items %}
-        <li>{{ item.title }} - {{ item.price }} - {{ item.stars }} - {{ item.stock_info }} - {{ item.quantity }}</li>
+        <li>
+            <strong>{{ item.title }}</strong> - {{ item.price }} - {{ item.stars }} gwiazdki <br>
+            {{ item.stock_info }}<br>
+            <a href="{{ item.book_url }}" target="_blank">Link do książki</a>
+            <form action="/delete_book" method="post" style="display:inline;">
+                <input type="hidden" name="book_id" value="{{ item._id }}">
+                <button type="submit">Usuń</button>
+            </form>
+        </li>
         {% endfor %}
     </ul>
 </body>
