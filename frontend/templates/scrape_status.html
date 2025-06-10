@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Scraping in progress...</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+<body>
+    <h2>Scraping in progress... Please wait.</h2>
+    <div id="loader" style="width:100%;background:#f3f3f3;height:10px;position:relative;">
+        <div id="bar" style="width:0%;height:100%;background:#4CAF50;"></div>
+    </div>
+
+    <script>
+        function checkStatus() {
+            $.get("/scrape_status_check/{{ task_id }}", function (data) {
+                if (data.status === "done") {
+                    // start loader animation
+                    $("#bar").animate({ width: "100%" }, 2000, function () {
+                        window.location.href = "/";
+                    });
+                } else {
+                    setTimeout(checkStatus, 1000);
+                }
+            });
+        }
+
+        checkStatus();
+    </script>
+</body>
+
+</html>

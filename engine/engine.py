@@ -26,6 +26,9 @@ def process_category(category, num_books):
     db = client["books_project"]
     collection = db["fantasy_books"]
 
+    # ustawiamy 'new': False dla istniejących książek z tej kategorii
+    collection.update_many({"category": category, "new": True}, {"$set": {"new": False}})
+
     url = f"https://books.toscrape.com/catalogue/category/books/{category}/index.html"
     response = requests.get(url)
     soup = BeautifulSoup(response.text, "html.parser")
@@ -38,6 +41,14 @@ def process_category(category, num_books):
         'Three': '⭐⭐⭐',
         'Four': '⭐⭐⭐⭐',
         'Five': '⭐⭐⭐⭐⭐'
+    }
+
+    stars_reverse_map = {
+        '⭐': 1,
+        '⭐⭐': 2,
+        '⭐⭐⭐': 3,
+        '⭐⭐⭐⭐': 4,
+        '⭐⭐⭐⭐⭐': 5
     }
 
     book_links = []
@@ -54,15 +65,25 @@ def process_category(category, num_books):
 
         book_links.append(book_url)
 
-    
-
-        book_meta.append({
+        meta = {
             'title': title,
             'price': price,
             'stars': star_rating_emote,
             'book_url': book_url,
-            'category': category
-        })
+            'category': category,
+            'new': True
+        }
+
+        # Dodajemy pola numeryczne:
+        meta["stars_num"] = stars_reverse_map.get(meta["stars"], 0)
+        try:
+            meta["price_num"] = float(price.replace("£", "").replace(",", "").strip())
+        except:
+            meta["price_num"] = 0.0
+
+        meta["quantity_num"] = 0  # na razie, uzupełnimy po details
+
+        book_meta.append(meta)
 
     print(f"\nFound {len(book_links)} book links. Starting multiprocessing...\n")
 
@@ -72,6 +93,11 @@ def process_category(category, num_books):
     inserted_count = 0
     for meta, details in zip(book_meta, details_results):
         meta.update(details)
+        try:
+            meta["quantity_num"] = int(details.get("quantity", "0"))
+        except:
+            meta["quantity_num"] = 0
+
         exists = collection.find_one({'title': meta['title'], 'category': meta['category']})
         if not exists:
             collection.insert_one(meta)
@@ -81,6 +107,8 @@ def process_category(category, num_books):
             print(f"Skipped duplicate: {meta['title']}")
 
     print(f"\nInserted {inserted_count} new books.")
+
+
 
 if __name__ == "__main__":
     client = MongoClient("mongodb://mongo:27017/")

@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-import os
+from flask import jsonify
 
 app = Flask(__name__)
 
@@ -13,10 +13,8 @@ tasks_collection = db["scrape_tasks"]
 @app.route("/")
 def index():
     selected_category = request.args.get("category")
-    if selected_category:
-        items = list(collection.find({"category": selected_category}))
-    else:
-        items = list(collection.find())
+    sort_by = request.args.get("sort_by", "title")  # nowy parametr
+
     categories = [
         "travel_2", "mystery_3", "historical-fiction_4", "sequential-art_5",
         "classics_6", "philosophy_7", "romance_8", "womens-fiction_9",
@@ -31,14 +29,58 @@ def index():
         "christian_43", "suspense_44", "short-stories_45", "novels_46",
         "health_47", "politics_48", "cultural_49", "erotica_50", "crime_51"
     ]
-    return render_template("index.html", items=items, categories=categories,selected_category=selected_category )
+
+    categories_display = []
+    for cat in categories:
+        name = cat.rsplit("_", 1)[0].replace("-", " ").capitalize()
+        categories_display.append((cat, name))
+
+    # Mapa sortowania — pole, kierunek
+    sort_mapping = {
+        "title": ("title", 1),
+        "stars": ("stars_num", -1),
+        "price": ("price_num", 1),
+        "quantity": ("quantity_num", -1)
+    }
+
+    sort_field, sort_order = sort_mapping.get(sort_by, ("title", 1))
+
+    # Budujemy query
+    query = {}
+    if selected_category:
+        query["category"] = selected_category
+
+    # Pobieramy książki + sortowanie
+    items = list(collection.find(query).sort(sort_field, sort_order))
+    num_books_total = collection.count_documents(query)
+    num_books_new = collection.count_documents({**query, "new": True})
+
+    return render_template(
+        "index.html",
+        items=items,
+        categories_display=categories_display,
+        selected_category=selected_category,
+        sort_by=sort_by,  # dodajemy sort_by do template
+        num_books_total=num_books_total,
+        num_books_new=num_books_new
+    )
+
 
 @app.route("/scrape_category", methods=["POST"])
 def scrape_category():
     num_books = int(request.form.get("num_books", 3))
     category = request.form.get("category")
-    tasks_collection.insert_one({"category": category, "num_books": num_books, "status": "pending"})
-    return redirect(url_for("index"))
+
+    # usuwamy wszystkie NEW w tej kategorii
+    collection.update_many({"category": category, "new": True}, {"$set": {"new": False}})
+
+    # dodajemy task
+    task = {"category": category, "num_books": num_books, "status": "pending"}
+    task_id = tasks_collection.insert_one(task).inserted_id
+
+    # przekierowujemy na scrape_status z id taska
+    return redirect(url_for("scrape_status", task_id=str(task_id)))
+
 
 @app.route("/delete_book", methods=["POST"])
 def delete_book():
@@ -46,6 +88,20 @@ def delete_book():
     collection.delete_one({"_id": ObjectId(book_id)})
     return redirect(url_for("index"))
 
+@app.route("/check_task_status")
+def check_task_status():
+    task = tasks_collection.find_one(sort=[("_id", -1)])
+    return {"status": task["status"]} if task else {"status": "unknown"}
+
+@app.route("/scrape_status/<task_id>")
+def scrape_status(task_id):
+    return render_template("scrape_status.html", task_id=task_id)
+
+@app.route("/scrape_status_check/<task_id>")
+def scrape_status_check(task_id):
+    task = tasks_collection.find_one({"_id": ObjectId(task_id)})
+    status = task["status"] if task else "unknown"
+    return jsonify({"status": status})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
